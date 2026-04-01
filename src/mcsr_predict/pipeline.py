@@ -55,7 +55,10 @@ def run_pipeline(data_path: Path | None = None) -> None:
     metrics = compute_metrics(model, X_test, y_test)
     feature_importance = get_feature_importance(model, list(X.columns))
 
+    print(f"Raw matches loaded: {len(all_matches)}")
+    print(f"Matches after filter: {len(filtered)}")
     print(f"Number of matches used: {len(X)}")
+    print(f"Skipped unresolved winner: {builder.dataset_stats['skipped_unresolved_winner']}")
     print(f"Train size: {len(X_train)}")
     print(f"Test size: {len(X_test)}")
     print_evaluation_report(metrics, feature_importance, top_n=20)

@@ -22,6 +22,8 @@ EVENT_TO_AVG_FEATURE = {
 }
 
 DEATH_EVENTS = {"projectelo.timeline.death", "projectelo.timeline.death_spawnpoint"}
+LOSS_EVENTS = {"projectelo.timeline.forfeit", "projectelo.timeline.reset"}
+WIN_EVENTS = {"projectelo.timeline.dragon_death", "end.kill_dragon"}
 
 
 class FeatureBuilder:
@@ -39,6 +41,7 @@ class FeatureBuilder:
         self.head_to_head: defaultdict[tuple[str, str], dict[str, int]] = defaultdict(
             lambda: {"wins_first": 0, "total": 0}
         )
+        self.dataset_stats: dict[str, int] = {}
 
     @staticmethod
     def _make_player_state() -> dict[str, Any]:
@@ -317,27 +320,100 @@ class FeatureBuilder:
     def _with_suffix(features: dict[str, float], suffix: str) -> dict[str, float]:
         return {f"{key}_{suffix}": float(value) for key, value in features.items()}
 
+    @staticmethod
+    def _winner_from_changes(match: dict[str, Any], player_uuids: set[str]) -> str | None:
+        positive_changes = [
+            str(entry.get("uuid"))
+            for entry in match.get("changes", [])
+            if str(entry.get("uuid")) in player_uuids
+            and isinstance(entry.get("change"), (int, float))
+            and float(entry.get("change")) > 0.0
+        ]
+        negative_changes = [
+            str(entry.get("uuid"))
+            for entry in match.get("changes", [])
+            if str(entry.get("uuid")) in player_uuids
+            and isinstance(entry.get("change"), (int, float))
+            and float(entry.get("change")) < 0.0
+        ]
+        if len(positive_changes) == 1 and len(negative_changes) == 1:
+            return positive_changes[0]
+        return None
+
+    @staticmethod
+    def _winner_from_timelines(match: dict[str, Any], player_uuids: set[str]) -> str | None:
+        winners: set[str] = set()
+        losers: set[str] = set()
+
+        for event in match.get("timelines", []):
+            uuid = str(event.get("uuid"))
+            event_type = event.get("type")
+            if uuid not in player_uuids or event_type is None:
+                continue
+            if event_type in WIN_EVENTS:
+                winners.add(uuid)
+            if event_type in LOSS_EVENTS:
+                losers.add(uuid)
+
+        if len(winners) == 1:
+            return next(iter(winners))
+        if len(losers) == 1:
+            loser_uuid = next(iter(losers))
+            for player_uuid in player_uuids:
+                if player_uuid != loser_uuid:
+                    return player_uuid
+        return None
+
+    def _resolve_winner_uuid(self, match: dict[str, Any], p1_uuid: str, p2_uuid: str) -> str | None:
+        player_uuids = {p1_uuid, p2_uuid}
+        result_uuid = str((match.get("result") or {}).get("uuid", ""))
+        if result_uuid in player_uuids:
+            return result_uuid
+
+        timeline_winner = self._winner_from_timelines(match, player_uuids)
+        if timeline_winner is not None:
+            return timeline_winner
+
+        change_winner = self._winner_from_changes(match, player_uuids)
+        if change_winner is not None:
+            return change_winner
+
+        return None
+
     def build_dataset(self, matches: list[dict[str, Any]]) -> tuple[pd.DataFrame, pd.Series]:
+        self.dataset_stats = {
+            "matches_seen": 0,
+            "rows_built": 0,
+            "skipped_missing_seed": 0,
+            "skipped_invalid_players": 0,
+            "skipped_missing_uuid": 0,
+            "skipped_unresolved_winner": 0,
+        }
         rows: list[dict[str, float]] = []
         targets: list[int] = []
 
         for match in matches:
+            self.dataset_stats["matches_seen"] += 1
             seed = match.get("seed")
             if not seed:
+                self.dataset_stats["skipped_missing_seed"] += 1
                 continue
 
             ordered = self._normalize_players(match)
             if ordered is None:
+                self.dataset_stats["skipped_invalid_players"] += 1
                 continue
 
             p1, p2 = ordered
             p1_uuid = str(p1.get("uuid"))
             p2_uuid = str(p2.get("uuid"))
             if not p1_uuid or not p2_uuid:
+                self.dataset_stats["skipped_missing_uuid"] += 1
                 continue
 
-            winner_uuid = str((match.get("result") or {}).get("uuid", ""))
-            if winner_uuid not in {p1_uuid, p2_uuid}:
+            winner_uuid = self._resolve_winner_uuid(match, p1_uuid, p2_uuid)
+            if winner_uuid is None:
+                self.dataset_stats["skipped_unresolved_winner"] += 1
                 continue
 
             current_ts = int(match.get("date", 0))
@@ -387,6 +463,7 @@ class FeatureBuilder:
 
             rows.append(row)
             targets.append(1 if winner_uuid == p1_uuid else 0)
+            self.dataset_stats["rows_built"] += 1
 
             # Update all rolling state only after current features are materialized.
             custom_delta_p1, custom_delta_p2 = self.custom_elo.update_match(p1_uuid, p2_uuid, winner_uuid)

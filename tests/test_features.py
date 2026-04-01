@@ -128,3 +128,36 @@ def test_rolling_window_features_with_known_results() -> None:
     assert third_row["matches_last_7d_p1"] == pytest.approx(2.0)
     assert third_row["matches_last_14d_p1"] == pytest.approx(2.0)
     assert third_row["matches_last_30d_p1"] == pytest.approx(2.0)
+
+
+def test_forfeited_match_with_reset_event_recovers_winner() -> None:
+    builder = FeatureBuilder()
+    match = make_match(date=100, uuid_a="a", uuid_b="b", winner_uuid="a", forfeited=True)
+    match["result"]["uuid"] = None
+    match["changes"] = [
+        {"uuid": "a", "change": 0, "eloRate": 1200},
+        {"uuid": "b", "change": 0, "eloRate": 1200},
+    ]
+    match["timelines"] = [{"uuid": "b", "time": 12345, "type": "projectelo.timeline.reset"}]
+
+    X, y = builder.build_dataset([match])
+
+    assert len(X) == 1
+    assert int(y.iloc[0]) == 1
+    assert builder.dataset_stats["rows_built"] == 1
+    assert builder.dataset_stats["skipped_unresolved_winner"] == 0
+
+
+def test_forfeited_match_with_positive_change_recovers_winner() -> None:
+    builder = FeatureBuilder()
+    match = make_match(date=100, uuid_a="a", uuid_b="b", winner_uuid="a", forfeited=True)
+    match["result"]["uuid"] = None
+    match["changes"] = [
+        {"uuid": "a", "change": 12, "eloRate": 1212},
+        {"uuid": "b", "change": -12, "eloRate": 1188},
+    ]
+
+    X, y = builder.build_dataset([match])
+
+    assert len(X) == 1
+    assert int(y.iloc[0]) == 1
