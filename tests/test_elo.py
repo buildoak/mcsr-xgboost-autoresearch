@@ -29,8 +29,8 @@ def test_platform_elo_extracts_pre_match_from_changes() -> None:
     platform = PlatformELO()
     ratings = platform.extract_pre_match_elos(match)
 
-    assert ratings["p1"] == pytest.approx(2159.0)
-    assert ratings["p2"] == pytest.approx(2167.0)
+    assert ratings["p1"] == pytest.approx(2178.0)
+    assert ratings["p2"] == pytest.approx(2148.0)
 
 
 def test_custom_elo_updates_across_matches() -> None:

@@ -13,10 +13,10 @@ from .config import RANDOM_STATE
 def train_xgboost(
     X_train: pd.DataFrame,
     y_train: pd.Series,
-    X_test: pd.DataFrame,
-    y_test: pd.Series,
+    X_val: pd.DataFrame,
+    y_val: pd.Series,
 ) -> XGBClassifier:
-    """Train an XGBoost classifier with early stopping on the time-split holdout."""
+    """Train an XGBoost classifier with early stopping on the temporal validation split."""
 
     model = XGBClassifier(
         max_depth=6,
@@ -33,7 +33,7 @@ def train_xgboost(
     model.fit(
         X_train,
         y_train,
-        eval_set=[(X_test, y_test)],
+        eval_set=[(X_val, y_val)],
         verbose=False,
     )
     return model

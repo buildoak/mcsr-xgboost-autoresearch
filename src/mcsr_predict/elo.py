@@ -22,7 +22,7 @@ class PlatformELO:
 
     Critical trap:
     `players[].eloRate` is scrape-time ELO and must NOT be used for historical matches.
-    Pre-match ELO is reconstructed from `changes[]` as: post_match_elo - elo_change.
+    `changes[].eloRate` already contains the pre-match ELO for that player.
     """
 
     def __init__(self, default_elo: float = DEFAULT_ELO) -> None:
@@ -32,11 +32,11 @@ class PlatformELO:
         result: dict[str, float] = {}
         for entry in match.get("changes", []):
             uuid = entry.get("uuid")
-            post_elo = entry.get("eloRate")
+            pre_elo = entry.get("eloRate")
             change = entry.get("change")
-            if uuid is None or post_elo is None or change is None:
+            if uuid is None or pre_elo is None or change is None:
                 continue
-            result[uuid] = float(post_elo) - float(change)
+            result[uuid] = float(pre_elo)
         return result
 
     def get_rating(self, match: dict[str, Any], player_uuid: str) -> float:

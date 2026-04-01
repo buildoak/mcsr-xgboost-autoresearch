@@ -61,8 +61,8 @@ def make_match(
         "forfeited": forfeited,
         "decayed": False,
         "changes": [
-            {"uuid": uuid_a, "change": change_a, "eloRate": pre_elo_a + change_a},
-            {"uuid": uuid_b, "change": change_b, "eloRate": pre_elo_b + change_b},
+            {"uuid": uuid_a, "change": change_a, "eloRate": pre_elo_a},
+            {"uuid": uuid_b, "change": change_b, "eloRate": pre_elo_b},
         ],
         "completions": [{"uuid": winner_uuid, "time": 600000}] if not forfeited else [],
         "timelines": [],
@@ -153,8 +153,8 @@ def test_forfeited_match_with_positive_change_recovers_winner() -> None:
     match = make_match(date=100, uuid_a="a", uuid_b="b", winner_uuid="a", forfeited=True)
     match["result"]["uuid"] = None
     match["changes"] = [
-        {"uuid": "a", "change": 12, "eloRate": 1212},
-        {"uuid": "b", "change": -12, "eloRate": 1188},
+        {"uuid": "a", "change": 12, "eloRate": 1200},
+        {"uuid": "b", "change": -12, "eloRate": 1200},
     ]
 
     X, y = builder.build_dataset([match])
